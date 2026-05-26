@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+<title>KvK ULTIMATE TIMER</title>
+
+<style>
+body{
+    background:#0f0f0f;
+    color:white;
+    font-family:sans-serif;
+    text-align:center;
+    padding:12px;
+}
+
+#utc{
+    font-size:34px;
+    color:#00ffcc;
+    margin:10px 0;
+}
+
+input, button{
+    font-size:16px;
+    padding:8px;
+    margin:4px;
+    border-radius:8px;
+    border:none;
+}
+
+button{
+    background:#333;
+    color:white;
+}
+
+.enemyBox{
+    border:1px solid #444;
+    margin:8px;
+    padding:8px;
+    border-radius:10px;
+}
+
+#count{
+    font-size:70px;
+    margin-top:10px;
+}
+
+.red{color:#ff4444;}
+.yellow{color:#ffcc00;}
+.green{color:#00ff66;}
+
+.small{font-size:13px;opacity:0.7;}
+</style>
+</head>
+
+<body>
+
+<h2>KvK ULTIMATE</h2>
+
+<div id="utc">--:--:--.---</div>
+
+<div>
+<input id="remainMin" type="number" value="3">分
+<input id="remainSec" type="number" value="0">秒
+</div>
+
+<div id="enemies"></div>
+
+<button onclick="addEnemy()">敵追加</button>
+<button onclick="start()">START</button>
+
+<div id="info"></div>
+<div id="count">--</div>
+
+<audio id="beep">
+<source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg">
+</audio>
+
+<script>
+
+// ===== UTC =====
+const base = Date.now();
+const perf = performance.now();
+
+function now(){
+    return base + (performance.now() - perf);
+}
+
+function tick(){
+    const d = new Date(now());
+    utc.textContent =
+        String(d.getUTCHours()).padStart(2,"0")+":"+
+        String(d.getUTCMinutes()).padStart(2,"0")+":"+
+        String(d.getUTCSeconds()).padStart(2,"0")+"."+
+        String(d.getUTCMilliseconds()).padStart(3,"0");
+
+    requestAnimationFrame(tick);
+}
+tick();
+
+// ===== スリープ防止 =====
+if("wakeLock" in navigator){
+    navigator.wakeLock.request("screen");
+}
+
+// ===== 敵追加 =====
+function addEnemy(){
+    const div = document.createElement("div");
+    div.className="enemyBox";
+    div.innerHTML=`
+        <div>敵</div>
+        行軍 <input class="em" type="number" step="0.1">
+        自分 <input class="mm" type="number" step="0.1">
+    `;
+    enemies.appendChild(div);
+}
+
+// 初期1つ
+addEnemy();
+
+// ===== 状態 =====
+let goTimes=[];
+
+// ===== START =====
+function start(){
+
+    goTimes=[];
+
+    const rm = (+remainMin.value*60)+(+remainSec.value);
+    const t = now();
+
+    const boxes = document.querySelectorAll(".enemyBox");
+
+    boxes.forEach(b=>{
+
+        const enemy = +b.querySelector(".em").value;
+        const mine = +b.querySelector(".mm").value;
+
+        const enemyArrival = t + rm*1000 + enemy*1000;
+
+        const go = enemyArrival - mine*1000;
+
+        goTimes.push(go);
+    });
+
+    savePreset();
+}
+
+// ===== LOOP =====
+function loop(){
+
+    if(goTimes.length===0){
+        requestAnimationFrame(loop);
+        return;
+    }
+
+    const t = now();
+
+    let min = Infinity;
+
+    goTimes.forEach(g=>{
+        const r = (g - t)/1000;
+        if(r < min) min = r;
+    });
+
+    count.textContent = min.toFixed(1);
+
+    if(min <= 0){
+        count.className="green";
+        beep.play();
+    }else if(min <= 1){
+        count.className="red";
+    }else if(min <= 3){
+        count.className="yellow";
+    }else{
+        count.className="";
+    }
+
+    requestAnimationFrame(loop);
+}
+loop();
+
+// ===== 自動補正学習 =====
+let lastGo = 0;
+
+document.addEventListener("click", ()=>{
+    const diff = now() - lastGo;
+
+    if(lastGo !== 0 && Math.abs(diff) < 5000){
+        localStorage.setItem("offset",
+            (+(localStorage.getItem("offset")||0)) + (diff - 1000)
+        );
+    }
+    lastGo = now();
+});
+
+// ===== 保存 =====
+function savePreset(){
+    const data=[];
+    document.querySelectorAll(".enemyBox").forEach(b=>{
+        data.push({
+            e:b.querySelector(".em").value,
+            m:b.querySelector(".mm").value
+        });
+    });
+    localStorage.setItem("kvk", JSON.stringify(data));
+}
+</script>
+
+</body>
+</html>
